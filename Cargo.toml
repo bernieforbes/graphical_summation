@@ -1,0 +1,18 @@
+[package]
+name = "graphical_summation"
+version = "0.1.0"
+authors = ["Bernie Forbes"]
+edition = "2021"
+
+[dependencies]
+cfg-if = "1"
+winit = { version = "0.29", features = ["rwh_05"] }
+wgpu = "24.0.1"
+env_logger = "0.11.6"
+flume = "0.11"
+log = "0.4"
+pollster = "0.4.0"
+bytemuck = { version = "1.21.0", features = [ "derive" ] }
+image = {version = "0.25.5", default-features = false, features = ["png", "jpeg"]}
+anyhow = "1.0.96"
+
