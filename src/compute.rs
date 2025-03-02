@@ -23,7 +23,7 @@ impl Compute {
     pub fn new(
         storage_texture: &StorageTexture,
         f32_write_texture: &StorageTexture,
-        f32_read_texture: &StorageTexture,
+        f16_read_texture: &StorageTexture,
         diffuse_texture: &texture::Texture,
         device: &wgpu::Device,
         shader_module: ShaderModule,
@@ -64,7 +64,7 @@ impl Compute {
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
                         view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                     },
                     count: None,
                 },
@@ -83,7 +83,7 @@ impl Compute {
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
                         access: wgpu::StorageTextureAccess::WriteOnly,
-                        format: wgpu::TextureFormat::Rgba16Float,
+                        format: wgpu::TextureFormat::Rgba32Float,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
                     count: None,
@@ -94,7 +94,7 @@ impl Compute {
                     ty: wgpu::BindingType::Texture {
                         multisampled: false,
                         view_dimension: wgpu::TextureViewDimension::D2,
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
                     },
                     count: None,
                 },
@@ -123,7 +123,7 @@ impl Compute {
                 },
                 wgpu::BindGroupEntry {
                     binding: 4,
-                    resource: wgpu::BindingResource::TextureView(&f32_read_texture.view),
+                    resource: wgpu::BindingResource::TextureView(&f16_read_texture.view),
                 },
             ],
         });

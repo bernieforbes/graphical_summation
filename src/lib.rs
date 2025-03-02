@@ -95,7 +95,7 @@ struct Context<'a> {
     diffuse_texture: texture::Texture,
     storage_texture: storage_texture::StorageTexture,
     f32_write_texture: storage_texture::StorageTexture,
-    f32_read_texture: storage_texture::StorageTexture,
+    f16_read_texture: storage_texture::StorageTexture,
     compute: compute::Compute,
 }
 
@@ -233,12 +233,8 @@ impl<'a> Context<'a> {
         //
 
         surface.configure(&device, &config);
-        // let diffuse_bytes = include_bytes!("../assets/happy-tree.png");
-        // let diffuse_bytes = include_bytes!("../assets/single_white_pixel.png");
-        // let diffuse_bytes = include_bytes!("../assets/single_white_pixel_small.png");
-        let diffuse_bytes = include_bytes!("../assets/single_white_pixel_very_small.png");
-        // let diffuse_bytes = include_bytes!("../assets/white_circle.png");
-        // let diffuse_bytes = include_bytes!("../assets/density_start_state_128_128.png");
+        let diffuse_bytes = include_bytes!("../assets/ap.png");
+
         let diffuse_texture =
             texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "diffuse texture")
                 .unwrap();
@@ -252,7 +248,7 @@ impl<'a> Context<'a> {
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
                         },
                         count: None,
                     },
@@ -261,7 +257,7 @@ impl<'a> Context<'a> {
                         visibility: wgpu::ShaderStages::FRAGMENT,
                         // This should match the filterable field of the
                         // corresponding Texture entry above.
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::NonFiltering),
                         count: None,
                     },
                 ],
@@ -394,12 +390,12 @@ impl<'a> Context<'a> {
         let f32_write_texture = storage_texture::StorageTexture::from_texture(
             &diffuse_texture.texture,
             &device,
-            wgpu::TextureFormat::Rgba16Float,
+            wgpu::TextureFormat::Rgba32Float,
             wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC,
         )
         .unwrap();
 
-        let f32_read_texture = storage_texture::StorageTexture::from_texture(
+        let f16_read_texture = storage_texture::StorageTexture::from_texture(
             &diffuse_texture.texture,
             &device,
             wgpu::TextureFormat::Rgba16Float,
@@ -410,7 +406,7 @@ impl<'a> Context<'a> {
         let compute = compute::Compute::new(
             &storage_texture,
             &f32_write_texture,
-            &f32_read_texture,
+            &f16_read_texture,
             &diffuse_texture,
             &device,
             shader_module,
@@ -454,7 +450,7 @@ impl<'a> Context<'a> {
             diffuse_texture,
             storage_texture,
             f32_write_texture,
-            f32_read_texture,
+            f16_read_texture,
             compute,
         }
     }
@@ -500,8 +496,8 @@ impl<'a> Context<'a> {
         );
 
         // WIP_ONLY
-        if self.uniforms.elapsed_seconds % 1.0 > 0.02 {
-            // return;
+        if self.uniforms.elapsed_seconds % 1.5 > 0.02 {
+            return;
         }
 
         let mut command_encoder = self
@@ -528,18 +524,18 @@ impl<'a> Context<'a> {
             self.diffuse_texture.texture.size(),
         );
 
-        command_encoder.copy_texture_to_texture(
-            self.f32_write_texture.texture.as_image_copy(),
-            self.f32_read_texture.texture.as_image_copy(),
-            self.f32_read_texture.texture.size(),
-        );
+        // command_encoder.copy_texture_to_texture(
+        //     self.f32_write_texture.texture.as_image_copy(),
+        //     self.f16_read_texture.texture.as_image_copy(),
+        //     self.f16_read_texture.texture.size(),
+        // );
 
         self.queue.submit(Some(command_encoder.finish()));
 
-        self.compute.uniforms.texel_group += 1;
-        if self.compute.uniforms.texel_group == 4 {
-            self.compute.uniforms.texel_group = 0;
-        }
+        // self.compute.uniforms.texel_group += 1;
+        // if self.compute.uniforms.texel_group == 4 {
+        // self.compute.uniforms.texel_group = 0;
+        // }
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
@@ -605,8 +601,8 @@ pub async fn run() {
         .with_title("Graphical Summation")
         .with_position(LogicalPosition::new(1300, 800))
         .with_inner_size(PhysicalSize {
-            width: 1024,
-            height: 1024,
+            width: 128,
+            height: 128,
         })
         .build(&event_loop)
         .unwrap();
