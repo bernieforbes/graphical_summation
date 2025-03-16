@@ -1,6 +1,6 @@
 use std::{iter, time::SystemTime};
 
-use wgpu::util::DeviceExt;
+use wgpu::{util::DeviceExt, TexelCopyBufferInfoBase, TexelCopyBufferLayout};
 use winit::{
     dpi::{LogicalPosition, PhysicalSize},
     event::*,
@@ -93,10 +93,13 @@ struct Context<'a> {
     uniforms_bind_group: wgpu::BindGroup,
     diffuse_bind_group: wgpu::BindGroup,
     diffuse_texture: texture::Texture,
+    ap_texture_1: texture::Texture,
+    ap_texture_2: texture::Texture,
     storage_texture: storage_texture::StorageTexture,
     f32_write_texture: storage_texture::StorageTexture,
     f16_read_texture: storage_texture::StorageTexture,
     compute: compute::Compute,
+    texture_buffer: wgpu::Buffer,
 }
 
 // Implement the functions as members of State, so everything can just be referenced via "self"
@@ -143,7 +146,8 @@ impl<'a> Context<'a> {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    required_features: wgpu::Features::empty(),
+                    // required_features: wgpu::Features::empty(),
+                    required_features: wgpu::Features::TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES,
                     required_limits: wgpu::Limits::default(),
                     memory_hints: Default::default(),
                 },
@@ -238,6 +242,12 @@ impl<'a> Context<'a> {
         let diffuse_texture =
             texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "diffuse texture")
                 .unwrap();
+
+        let ap_texture_1 =
+            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "ap texture 1").unwrap();
+
+        let ap_texture_2 =
+            texture::Texture::from_bytes(&device, &queue, diffuse_bytes, "ap texture 2").unwrap();
 
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -408,6 +418,8 @@ impl<'a> Context<'a> {
             &f32_write_texture,
             &f16_read_texture,
             &diffuse_texture,
+            &ap_texture_1,
+            &ap_texture_2,
             &device,
             shader_module,
         )
@@ -430,6 +442,15 @@ impl<'a> Context<'a> {
         });
         let num_indices = INDICES.len() as u32;
 
+        // The texture buffer
+        let texture_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Texture Buffer"),
+            size: (4 * storage_texture.texture.width() * storage_texture.texture.height()) as u64,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+            // mapped_at_creation: true,
+        });
+
         // Return the struct
         Self {
             surface,
@@ -448,10 +469,13 @@ impl<'a> Context<'a> {
             uniforms_bind_group,
             diffuse_bind_group,
             diffuse_texture,
+            ap_texture_1,
+            ap_texture_2,
             storage_texture,
             f32_write_texture,
             f16_read_texture,
             compute,
+            texture_buffer,
         }
     }
 
@@ -482,6 +506,7 @@ impl<'a> Context<'a> {
         self.uniforms.elapsed_seconds = time_now;
         self.compute.uniforms.delta_time = time_now - self.compute.uniforms.elapsed_seconds;
         self.compute.uniforms.elapsed_seconds = time_now;
+        self.compute.uniforms.max_value = 2.0;
 
         self.queue.write_buffer(
             &self.uniforms_buffer,
@@ -497,7 +522,7 @@ impl<'a> Context<'a> {
 
         // WIP_ONLY
         if self.uniforms.elapsed_seconds % 1.5 > 0.02 {
-            return;
+            // return;
         }
 
         let mut command_encoder = self
@@ -518,11 +543,87 @@ impl<'a> Context<'a> {
             );
         }
 
-        command_encoder.copy_texture_to_texture(
-            self.storage_texture.texture.as_image_copy(),
-            self.diffuse_texture.texture.as_image_copy(),
-            self.diffuse_texture.texture.size(),
-        );
+        let capturable = self.texture_buffer.clone();
+        let copy_size = self.diffuse_texture.texture.size().clone();
+        let diffuse_texture = self.diffuse_texture.texture.clone();
+        let storage_texture = self.storage_texture.texture.clone();
+        let slice = self.texture_buffer.slice(..);
+        let queue = self.queue.clone();
+        // slice.map_async(wgpu::MapMode::Read, move |result| {
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            if result.is_ok() {
+                command_encoder.copy_texture_to_buffer(
+                    storage_texture.as_image_copy(),
+                    TexelCopyBufferInfoBase {
+                        buffer: &capturable,
+                        layout: wgpu::TexelCopyBufferLayout {
+                            offset: 0,
+                            bytes_per_row: Some(4 * storage_texture.width()),
+                            rows_per_image: Some(storage_texture.height()),
+                        },
+                    },
+                    copy_size,
+                );
+                let buffer_slice = capturable.slice(..);
+
+                let data = buffer_slice.get_mapped_range();
+
+                let result: Vec<_> = data
+                    .chunks_exact(4)
+                    .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+                    .collect();
+
+                let foo = result;
+
+                println!("{:?}", foo);
+                drop(data);
+                capturable.unmap();
+
+                command_encoder.copy_texture_to_texture(
+                    storage_texture.as_image_copy(),
+                    diffuse_texture.as_image_copy(),
+                    copy_size,
+                );
+                queue.submit(Some(command_encoder.finish()));
+            }
+        });
+
+        // self.queue = queue.clone();
+
+        // command_encoder.copy_texture_to_buffer(
+        //     self.storage_texture.texture.as_image_copy(),
+        //     TexelCopyBufferInfoBase {
+        //         buffer: &self.texture_buffer,
+        //         layout: wgpu::TexelCopyBufferLayout {
+        //             offset: 0,
+        //             bytes_per_row: Some(4 * self.storage_texture.texture.width()),
+        //             rows_per_image: Some(self.storage_texture.texture.height()),
+        //         },
+        //     },
+        //     self.diffuse_texture.texture.size(),
+        // );
+
+        // let buffer_slice = self.texture_buffer.slice(..);
+
+        // let data = buffer_slice.get_mapped_range();
+
+        // let result: Vec<_> = data
+        //     .chunks_exact(4)
+        //     .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
+        //     .collect();
+
+        // drop(data);
+        // self.texture_buffer.unmap();
+
+        // let foo = result;
+
+        // println!("{:?}", foo);
+
+        // command_encoder.copy_texture_to_texture(
+        //     self.storage_texture.texture.as_image_copy(),
+        //     self.diffuse_texture.texture.as_image_copy(),
+        //     self.diffuse_texture.texture.size(),
+        // );
 
         // command_encoder.copy_texture_to_texture(
         //     self.f32_write_texture.texture.as_image_copy(),
@@ -530,8 +631,9 @@ impl<'a> Context<'a> {
         //     self.f16_read_texture.texture.size(),
         // );
 
-        self.queue.submit(Some(command_encoder.finish()));
+        // self.queue.submit(Some(command_encoder.finish()));
 
+        self.compute.uniforms.time_step += 1;
         // self.compute.uniforms.texel_group += 1;
         // if self.compute.uniforms.texel_group == 4 {
         // self.compute.uniforms.texel_group = 0;

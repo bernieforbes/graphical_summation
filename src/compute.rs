@@ -15,8 +15,9 @@ pub struct Compute {
 pub struct ComputeUniforms {
     pub texel_group: u32,
     pub elapsed_seconds: f32,
-    pub time_step: f32,
+    pub time_step: u32,
     pub delta_time: f32,
+    pub max_value: f32,
 }
 
 impl Compute {
@@ -25,18 +26,22 @@ impl Compute {
         f32_write_texture: &StorageTexture,
         f16_read_texture: &StorageTexture,
         diffuse_texture: &texture::Texture,
+        ap_texture_1: &texture::Texture,
+        ap_texture_2: &texture::Texture,
         device: &wgpu::Device,
         shader_module: ShaderModule,
     ) -> Result<Self> {
         let texel_group = 0;
         let elapsed_seconds = 0.0;
-        let time_step = 1.0;
+        let time_step = 0;
         let delta_time = 0.0;
+        let max_value = 0.0;
         let uniforms = ComputeUniforms {
             texel_group,
             elapsed_seconds,
             time_step,
             delta_time,
+            max_value,
         };
 
         let uniforms_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -52,7 +57,7 @@ impl Compute {
                     binding: 0,
                     visibility: wgpu::ShaderStages::COMPUTE,
                     ty: wgpu::BindingType::StorageTexture {
-                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        access: wgpu::StorageTextureAccess::ReadWrite,
                         format: wgpu::TextureFormat::Rgba8Unorm,
                         view_dimension: wgpu::TextureViewDimension::D2,
                     },
@@ -98,6 +103,26 @@ impl Compute {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 5,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 6,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        multisampled: false,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -124,6 +149,14 @@ impl Compute {
                 wgpu::BindGroupEntry {
                     binding: 4,
                     resource: wgpu::BindingResource::TextureView(&f16_read_texture.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 5,
+                    resource: wgpu::BindingResource::TextureView(&ap_texture_1.view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 6,
+                    resource: wgpu::BindingResource::TextureView(&ap_texture_2.view),
                 },
             ],
         });

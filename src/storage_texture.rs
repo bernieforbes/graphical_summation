@@ -1,5 +1,6 @@
 use anyhow::*;
 
+#[derive(Clone)]
 pub struct StorageTexture {
     #[allow(unused)]
     pub texture: wgpu::Texture,
