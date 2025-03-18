@@ -1,6 +1,9 @@
-use std::{iter, time::SystemTime};
+use std::{
+    iter, thread,
+    time::{Duration, SystemTime},
+};
 
-use wgpu::{util::DeviceExt, TexelCopyBufferInfoBase, TexelCopyBufferLayout};
+use wgpu::{util::DeviceExt, TexelCopyBufferInfoBase};
 use winit::{
     dpi::{LogicalPosition, PhysicalSize},
     event::*,
@@ -549,7 +552,7 @@ impl<'a> Context<'a> {
         let storage_texture = self.storage_texture.texture.clone();
         let slice = self.texture_buffer.slice(..);
         let queue = self.queue.clone();
-        // slice.map_async(wgpu::MapMode::Read, move |result| {
+
         slice.map_async(wgpu::MapMode::Read, move |result| {
             if result.is_ok() {
                 command_encoder.copy_texture_to_buffer(
@@ -576,6 +579,7 @@ impl<'a> Context<'a> {
                 let foo = result;
 
                 println!("{:?}", foo);
+
                 drop(data);
                 capturable.unmap();
 
@@ -585,59 +589,16 @@ impl<'a> Context<'a> {
                     copy_size,
                 );
                 queue.submit(Some(command_encoder.finish()));
+
+                drop(capturable);
             }
         });
 
-        // self.queue = queue.clone();
-
-        // command_encoder.copy_texture_to_buffer(
-        //     self.storage_texture.texture.as_image_copy(),
-        //     TexelCopyBufferInfoBase {
-        //         buffer: &self.texture_buffer,
-        //         layout: wgpu::TexelCopyBufferLayout {
-        //             offset: 0,
-        //             bytes_per_row: Some(4 * self.storage_texture.texture.width()),
-        //             rows_per_image: Some(self.storage_texture.texture.height()),
-        //         },
-        //     },
-        //     self.diffuse_texture.texture.size(),
-        // );
-
-        // let buffer_slice = self.texture_buffer.slice(..);
-
-        // let data = buffer_slice.get_mapped_range();
-
-        // let result: Vec<_> = data
-        //     .chunks_exact(4)
-        //     .map(|b| u32::from_ne_bytes(b.try_into().unwrap()))
-        //     .collect();
-
-        // drop(data);
-        // self.texture_buffer.unmap();
-
-        // let foo = result;
-
-        // println!("{:?}", foo);
-
-        // command_encoder.copy_texture_to_texture(
-        //     self.storage_texture.texture.as_image_copy(),
-        //     self.diffuse_texture.texture.as_image_copy(),
-        //     self.diffuse_texture.texture.size(),
-        // );
-
-        // command_encoder.copy_texture_to_texture(
-        //     self.f32_write_texture.texture.as_image_copy(),
-        //     self.f16_read_texture.texture.as_image_copy(),
-        //     self.f16_read_texture.texture.size(),
-        // );
-
-        // self.queue.submit(Some(command_encoder.finish()));
+        // Have to do this for now or the buffer might get mapped again before the unmap finishes
+        // I have no idea why this is happening
+        thread::sleep(Duration::from_millis(5));
 
         self.compute.uniforms.time_step += 1;
-        // self.compute.uniforms.texel_group += 1;
-        // if self.compute.uniforms.texel_group == 4 {
-        // self.compute.uniforms.texel_group = 0;
-        // }
     }
 
     fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
